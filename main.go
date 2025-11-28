@@ -6,10 +6,18 @@ import (
 	"net/http"
 )
 
-type Subj struct {
+type ImportStats struct {
 	Items int `json:"items"`
 	Categories int `json:"categories"`
 	Price   int    `json:"price"`
+}
+
+type PriceItem struct {
+	ID int
+	Name string
+	Category string
+	Price float64
+	CreateDate time.Time
 }
 
 
