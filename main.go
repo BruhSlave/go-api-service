@@ -1,77 +1,80 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	_ "github.com/lib/pq"
 )
 
 type ImportStats struct {
-	Items int `json:"items"`
+	Items      int `json:"items"`
 	Categories int `json:"categories"`
-	Price   int    `json:"price"`
+	Price      int `json:"price"`
 }
 
 type PriceItem struct {
-	ID int
-	Name string
-	Category string
-	Price float64
+	ID         int
+	Name       string
+	Category   string
+	Price      float64
 	CreateDate time.Time
 }
 
-
-func mainPage(res http.ResponseWriter, req *http.Request) {
-	//
-	body := fmt.Sprintf("Method: %s\r\n", req.Method)
-	body += "Header =====================================\r\n"
-	for k, v := range req.Header {
-		body += fmt.Sprintf("%s: %v\r\n", k, v)
-	}
-	body += "Query =====================================\r\n"
-	if err := req.ParseForm(); err != nil {
-		res.Write([]byte(err.Error()))
-		return
-	}
-	body += "File main.go ================================"
-
-	for k, v := range req.Form {
-		body += fmt.Sprintf("%s: %v\r\n", k, v)
-	}
-
-	res.Write([]byte(body))
+func InsertItem(item PriceItem) error {
+	_, err := DB.Exec(`
+			INSERT INTO items (id, name, category, price, create_date)
+			VALUES ($1, $2, $3, $4, $5)
+		`,
+		item.ID,
+		item.Name,
+		item.Category,
+		item.Price,
+		item.CreateDate,
+	)
+	return err
 }
 
-func apiPage(res http.ResponseWriter, req *http.Request) {
-	res.Write([]byte("This is /api"))
-}
+func GetItems() ([]PriceItem, error) {
+	rows, err := DB.Query(`
+			SELECT id, name, category, price, create_date
+			FROM items
+			ORDER BY id
+		`)
+	if err != nil {
+		return nil, err
+	}
 
-func JSONHandler(w http.ResponseWriter, req *http.Request) {
-	subj := Subj{"Milk", 150}
+	defer rows.Close()
 
-	resp, err := json.Marshal(subj)
+	items := []PriceItem{}
+
+	for rows.Next() {
+		var price PriceItem
+		err := rows.Scan(&price.ID, &price.Name, &price.Category, &price.Price, &price.CreateDate)
 		if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+			return nil, err
+		}
+		items = append(items, price)
 	}
 
-	w.Header().Set("content-type", "application-json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	return items, nil
 }
 
 func main() {
-	// var h MyHandler
-	mux := http.NewServeMux()
-
-	mux.HandleFunc(`/api/`, apiPage)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request)) {
-		http.ServeFile(w, r, "./main.go")
+	if err := InitDB(); err != nil {
+		panic(err)
 	}
 
-	mux.HandleFunc("/json", JSONHandler)
+	mux := http.NewServeMux()
 
-	err := http.ListenAndServe(`:8080`, mux)
+	mux.HandleFunc("/api/v0/prices", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Endpoint works"))
+	})
+
+	fmt.Println("Server started at :8080")
+	err := http.ListenAndServe(":8080", mux)
 	if err != nil {
 		panic(err)
 	}
