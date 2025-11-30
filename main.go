@@ -62,6 +62,17 @@ func GetItems() ([]PriceItem, error) {
 	return items, nil
 }
 
+func PricesHandler(res http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodPost:
+		handlePostPrices(res, req)
+	case http.MethodGet:
+		handleGetPrices(res, req)
+	default:
+		http.Error(res, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func main() {
 	if err := InitDB(); err != nil {
 		panic(err)
@@ -69,9 +80,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/v0/prices", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Endpoint works"))
-	})
+	mux.HandleFunc("/api/v0/prices", PricesHandler)
 
 	fmt.Println("Server started at :8080")
 	err := http.ListenAndServe(":8080", mux)
