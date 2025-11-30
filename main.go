@@ -1,8 +1,13 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -71,6 +76,68 @@ func PricesHandler(res http.ResponseWriter, req *http.Request) {
 	default:
 		http.Error(res, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func handlePostPrices(res http.ResponseWriter, req *http.Request) {
+	if req.URL.Query().Get("type") != "zip" {
+		http.Error(res, "Only zip aviable", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := req.FormFile("file")
+	if err != nil {
+		http.Error(res, "File not found", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	buf, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(res, "Failed to read file", http.StatusBadRequest)
+		return
+	}
+
+	zipReader, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
+	if err != nil {
+		http.Error(res, "Invalid zip", http.StatusBadRequest)
+		return
+	}
+	total := 0
+
+	for _, f := range zipReader.File {
+		if !strings.HasSuffix(f.Name, ".csv") {
+			continue
+		}
+
+		csvFile, err := f.Open()
+		if err != nil {
+			http.Error(res, "Can't open csv file", http.StatusBadRequest)
+			return
+		}
+
+		reader := csv.NewReader(csvFile)
+		records, err := reader.ReadAll()
+		csvFile.Close()
+		if err != nil {
+			http.Error(res, "Fail to read csv file", http.StatusBadRequest)
+			return
+		}
+
+		for i, row := range records {
+			if i == 0 {
+				continue
+			}
+
+			fmt.Println(row)
+			total++
+		}
+	}
+
+	fmt.Fprintf(res, "Imported %d rows\n", total)
+}
+
+func handleGetPrices(res http.ResponseWriter, req *http.Request) {
+	res.Write([]byte("GET works"))
 }
 
 func main() {
