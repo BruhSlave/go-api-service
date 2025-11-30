@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,9 +15,9 @@ import (
 )
 
 type ImportStats struct {
-	Items      int `json:"items"`
-	Categories int `json:"categories"`
-	Price      int `json:"price"`
+	TotalItems      int `json:"total_items"`
+	TotalCategories int `json:"total_categories"`
+	TotalPrice      int `json:"total_price"`
 }
 
 type PriceItem struct {
@@ -102,7 +103,6 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, "Invalid zip", http.StatusBadRequest)
 		return
 	}
-	total := 0
 
 	for _, f := range zipReader.File {
 		if !strings.HasSuffix(f.Name, ".csv") {
@@ -128,12 +128,42 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 				continue
 			}
 
-			fmt.Println(row)
-			total++
+			if len(row) < 5 {
+				continue
+			}
+
+			id, err := strconv.Atoi(strings.TrimSpace(row[0]))
+			if err != nil {
+				fmt.Printf("Skip row %d: Invalid id %q: %v\n", i, row[0], err)
+				continue
+			}
+
+			name := strings.TrimSpace(row[1])
+			category := strings.TrimSpace(row[2])
+
+			price, err := strconv.ParseFloat(strings.TrimSpace(row[3]), 64)
+			if err != nil {
+				fmt.Printf("Skip row %d: invalid price %q: %v\n", i, row[3], err)
+				continue
+			}
+
+			createDate, err := time.Parse("2006-01-02", strings.TrimSpace(row[4]))
+			if err != nil {
+				fmt.Printf("Skip row %d: invalid date %q: %v\n", i, row[4], err)
+				continue
+			}
+
+			item := PriceItem{
+				ID:         id,
+				Name:       name,
+				Category:   category,
+				Price:      price,
+				CreateDate: createDate,
+			}
+
+			fmt.Printf("Parsed itmes: %+v\n", item)
 		}
 	}
-
-	fmt.Fprintf(res, "Imported %d rows\n", total)
 }
 
 func handleGetPrices(res http.ResponseWriter, req *http.Request) {
