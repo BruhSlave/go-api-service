@@ -21,11 +21,11 @@ type ImportStats struct {
 }
 
 type PriceItem struct {
-	ID         int
-	Name       string
-	Category   string
-	Price      float64
-	CreateDate time.Time
+	ID       int
+	Name     string
+	Category string
+	Price    float64
+	Date     time.Time
 }
 
 func InsertItem(item PriceItem) error {
@@ -37,7 +37,7 @@ func InsertItem(item PriceItem) error {
 		item.Name,
 		item.Category,
 		item.Price,
-		item.CreateDate,
+		item.Date,
 	)
 	return err
 }
@@ -58,7 +58,7 @@ func GetItems() ([]PriceItem, error) {
 
 	for rows.Next() {
 		var price PriceItem
-		err := rows.Scan(&price.ID, &price.Name, &price.Category, &price.Price, &price.CreateDate)
+		err := rows.Scan(&price.ID, &price.Name, &price.Category, &price.Price, &price.Date)
 		if err != nil {
 			return nil, err
 		}
@@ -154,11 +154,11 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 			}
 
 			item := PriceItem{
-				ID:         id,
-				Name:       name,
-				Category:   category,
-				Price:      price,
-				CreateDate: createDate,
+				ID:       id,
+				Name:     name,
+				Category: category,
+				Price:    price,
+				Date:     createDate,
 			}
 
 			fmt.Printf("Parsed itmes: %+v\n", item)
