@@ -1,4 +1,22 @@
 services:
+  backend:
+    container_name: go-api-server
+    image: iezekiil/go-api-server:latest
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: ${POSTGRES_HOST}
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PORT: 5432
+
+    depends_on:
+      - postgresql
+
   postgresql:
     image: postgres:16
     container_name: postgresql
