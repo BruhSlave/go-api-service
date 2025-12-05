@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,9 +16,9 @@ import (
 )
 
 type ImportStats struct {
-	TotalItems      int `json:"total_items"`
-	TotalCategories int `json:"total_categories"`
-	TotalPrice      int `json:"total_price"`
+	TotalItems      int     `json:"total_items"`
+	TotalCategories int     `json:"total_categories"`
+	TotalPrice      float64 `json:"total_price"`
 }
 
 type PriceItem struct {
@@ -80,6 +81,9 @@ func PricesHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 func handlePostPrices(res http.ResponseWriter, req *http.Request) {
+	var totalItems int
+	var totalPrice float64
+
 	if req.URL.Query().Get("type") != "zip" {
 		http.Error(res, "Only zip aviable", http.StatusBadRequest)
 		return
@@ -104,6 +108,7 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	categoriesMap := make(map[string]struct{})
 	for _, f := range zipReader.File {
 		if !strings.HasSuffix(f.Name, ".csv") {
 			continue
@@ -161,9 +166,33 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 				Date:     createDate,
 			}
 
-			fmt.Printf("Parsed itmes: %+v\n", item)
+			_, err = DB.Exec(`
+    			INSERT INTO prices (id, name, category, price, create_date)
+    			VALUES ($1, $2, $3, $4, $5)
+    			ON CONFLICT (id) DO UPDATE SET 
+        			name = EXCLUDED.name,
+        			category = EXCLUDED.category,
+        			price = EXCLUDED.price,
+        			create_date = EXCLUDED.create_date
+			`, item.ID, item.Name, item.Category, item.Price, item.Date)
+			if err != nil {
+				fmt.Printf("Failed to INSERT in BD in row %d and err: %v\n", i, err)
+			}
+
+			totalItems++
+			categoriesMap[category] = struct{}{}
+			totalPrice += price
+
 		}
 	}
+	stats := ImportStats{
+		TotalItems:      totalItems,
+		TotalCategories: len(categoriesMap),
+		TotalPrice:      totalPrice,
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(res).Encode(stats)
 }
 
 func handleGetPrices(res http.ResponseWriter, req *http.Request) {
