@@ -9,7 +9,7 @@ import (
 var DB *sql.DB
 
 func InitDB() error {
-	connStr := "postgres://validator:validator@localhost:5432/project_sem_1?sslmode=disable"
+	connStr := "postgres://validator:validator@localhost:5432/project-sem-1?sslmode=disable"
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
