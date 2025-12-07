@@ -216,13 +216,80 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 	startStr := req.URL.Query().Get("start")
 	endStr := req.URL.Query().Get("end")
 	minStr := req.URL.Query().Get("min")
-	maxSts := req.URL.Query().Get("max")
+	maxStr := req.URL.Query().Get("max")
 
-	var filters string[]
+	var filters []string
 	var args []interface{}
 	argID := 1
 
-	
+	if startStr != "" {
+		filters = append(filters, fmt.Sprintf("create_date >= $%d", argID))
+		startDate, _ := time.Parse("2006-01-02", startStr)
+		args = append(args, startDate)
+		argID++
+	}
+	if endStr != "" {
+		filters = append(filters, fmt.Sprintf("create_date <= $%d", argID))
+		endDate, _ := time.Parse("2006-01-02", endStr)
+		args = append(args, endDate)
+		argID++
+	}
+	if minStr != "" {
+		filters = append(filters, fmt.Sprintf("price >= $%d", argID))
+		minPrice, _ := strconv.ParseFloat(minStr, 64)
+		args = append(args, minPrice)
+		argID++
+	}
+	if maxStr != "" {
+		filters = append(filters, fmt.Sprintf("price <= $%d", argID))
+		maxPrice, _ := strconv.ParseFloat(maxStr, 64)
+		args = append(args, maxPrice)
+		argID++
+	}
+
+	query := "SELECT id, name, category, price, create_date FROM items"
+	if len(filters) > 0 {
+		query += " WHERE " + strings.Join(filters, " AND ")
+	}
+	query += " ORDER BY id"
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		http.Error(res, "Failed to query database", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	items := []PriceItem{}
+	for rows.Next() {
+		var item PriceItem
+		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Price, &item.Date); err != nil {
+			http.Error(res, "Failed to scan row", http.StatusInternalServerError)
+			return
+		}
+		items = append(items, item)
+	}
+
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+	fileWriter, _ := zipWriter.Create("data.csv")
+	csvWriter := csv.NewWriter(fileWriter)
+
+	csvWriter.Write([]string{"id", "name", "category", "price", "create_date"})
+	for _, item := range items {
+		csvWriter.Write([]string{
+			strconv.Itoa(item.ID),
+			item.Name,
+			item.Category,
+			fmt.Sprintf("%.2f", item.Price),
+			item.Date.Format("2006-01-02"),
+		})
+	}
+	csvWriter.Flush()
+	zipWriter.Close()
+
+	res.Header().Set("Content-Type", "application/zip")
+	res.Write(buf.Bytes())
 }
 
 func main() {
