@@ -213,7 +213,16 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 }
 
 func handleGetPrices(res http.ResponseWriter, req *http.Request) {
-	res.Write([]byte("GET works"))
+	startStr := req.URL.Query().Get("start")
+	endStr := req.URL.Query().Get("end")
+	minStr := req.URL.Query().Get("min")
+	maxSts := req.URL.Query().Get("max")
+
+	var filters string[]
+	var args []interface{}
+	argID := 1
+
+	
 }
 
 func main() {
