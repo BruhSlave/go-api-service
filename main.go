@@ -223,26 +223,42 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 	argID := 1
 
 	if startStr != "" {
+		startDate, err := time.Parse("2006-01-02", startStr)
+		if err != nil {
+			http.Error(res, "Invalid start date", http.StatusBadRequest)
+			return
+		}
 		filters = append(filters, fmt.Sprintf("create_date >= $%d", argID))
-		startDate, _ := time.Parse("2006-01-02", startStr)
 		args = append(args, startDate)
 		argID++
 	}
 	if endStr != "" {
+		endDate, err := time.Parse("2006-01-02", endStr)
+		if err != nil {
+			http.Error(res, "Invalid start date", http.StatusBadRequest)
+			return
+		}
 		filters = append(filters, fmt.Sprintf("create_date <= $%d", argID))
-		endDate, _ := time.Parse("2006-01-02", endStr)
 		args = append(args, endDate)
 		argID++
 	}
 	if minStr != "" {
+		minPrice, err := strconv.ParseFloat(minStr, 64)
+		if err != nil {
+			http.Error(res, "Invalid min price", http.StatusBadRequest)
+			return
+		}
 		filters = append(filters, fmt.Sprintf("price >= $%d", argID))
-		minPrice, _ := strconv.ParseFloat(minStr, 64)
 		args = append(args, minPrice)
 		argID++
 	}
 	if maxStr != "" {
+		maxPrice, err := strconv.ParseFloat(maxStr, 64)
+		if err != nil {
+			http.Error(res, "Invalid max price", http.StatusBadRequest)
+			return
+		}
 		filters = append(filters, fmt.Sprintf("price <= $%d", argID))
-		maxPrice, _ := strconv.ParseFloat(maxStr, 64)
 		args = append(args, maxPrice)
 		argID++
 	}
@@ -267,6 +283,9 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 			http.Error(res, "Failed to scan row", http.StatusInternalServerError)
 			return
 		}
+		if item.Price <= 0 || item.Name == "" || item.Category == "" || item.Date.IsZero() {
+			continue
+		}
 		items = append(items, item)
 	}
 
@@ -275,7 +294,8 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 	fileWriter, _ := zipWriter.Create("data.csv")
 	csvWriter := csv.NewWriter(fileWriter)
 
-	csvWriter.Write([]string{"id", "name", "category", "price", "create_date"})
+	csvWriter.Write([]string{" id", "name", "category", "price", "create_date"})
+
 	for _, item := range items {
 		csvWriter.Write([]string{
 			strconv.Itoa(item.ID),
@@ -285,7 +305,12 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 			item.Date.Format("2006-01-02"),
 		})
 	}
+
 	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		http.Error(res, "Failed to write CSV", http.StatusInternalServerError)
+		return
+	}
 	zipWriter.Close()
 
 	res.Header().Set("Content-Type", "application/zip")
