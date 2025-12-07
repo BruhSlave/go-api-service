@@ -19,6 +19,8 @@ type ImportStats struct {
 	TotalItems      int     `json:"total_items"`
 	TotalCategories int     `json:"total_categories"`
 	TotalPrice      float64 `json:"total_price"`
+	DuplicateCount  int     `json: "duplicates_count"`
+	TotalCount      int     `json: "total_count"`
 }
 
 type PriceItem struct {
