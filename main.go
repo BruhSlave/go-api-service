@@ -16,11 +16,11 @@ import (
 )
 
 type ImportStats struct {
+	TotalCount      int     `json:"total_count"`
+	DuplicatesCount int     `json:"duplicates_count"`
 	TotalItems      int     `json:"total_items"`
 	TotalCategories int     `json:"total_categories"`
 	TotalPrice      float64 `json:"total_price"`
-	DuplicateCount  int     `json: "duplicates_count"`
-	TotalCount      int     `json: "total_count"`
 }
 
 type PriceItem struct {
@@ -83,9 +83,6 @@ func PricesHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 func handlePostPrices(res http.ResponseWriter, req *http.Request) {
-	var totalItems int
-	var totalPrice float64
-
 	if req.URL.Query().Get("type") != "zip" {
 		http.Error(res, "Only zip aviable", http.StatusBadRequest)
 		return
@@ -110,7 +107,16 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	var (
+		totalItems      int
+		totalCount      int
+		duplicatesCount int
+		totalPrice      float64
+	)
+
 	categoriesMap := make(map[string]struct{})
+	seenID := make(map[int]struct{})
+
 	for _, f := range zipReader.File {
 		if !strings.HasSuffix(f.Name, ".csv") {
 			continue
@@ -139,11 +145,18 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 				continue
 			}
 
+			totalCount++
+
 			id, err := strconv.Atoi(strings.TrimSpace(row[0]))
 			if err != nil {
 				fmt.Printf("Skip row %d: Invalid id %q: %v\n", i, row[0], err)
 				continue
 			}
+
+			if _, ok := seenID[id]; ok {
+				duplicatesCount++
+			}
+			seenID[id] = struct{}{}
 
 			name := strings.TrimSpace(row[1])
 			category := strings.TrimSpace(row[2])
@@ -188,6 +201,8 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		}
 	}
 	stats := ImportStats{
+		TotalCount:      totalCount,
+		DuplicatesCount: duplicatesCount,
 		TotalItems:      totalItems,
 		TotalCategories: len(categoriesMap),
 		TotalPrice:      totalPrice,
