@@ -125,7 +125,7 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		csvFile, err := f.Open()
 		if err != nil {
 			http.Error(res, "Can't open csv file", http.StatusBadRequest)
-			return
+			continue
 		}
 
 		reader := csv.NewReader(csvFile)
@@ -133,7 +133,7 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		csvFile.Close()
 		if err != nil {
 			http.Error(res, "Fail to read csv file", http.StatusBadRequest)
-			return
+			continue
 		}
 
 		for i, row := range records {
@@ -182,7 +182,7 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 			}
 
 			_, err = DB.Exec(`
-    			INSERT INTO prices (id, name, category, price, create_date)
+    			INSERT INTO items (id, name, category, price, create_date)
     			VALUES ($1, $2, $3, $4, $5)
     			ON CONFLICT (id) DO UPDATE SET 
         			name = EXCLUDED.name,
