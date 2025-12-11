@@ -324,6 +324,8 @@ func main() {
 		panic(err)
 	}
 
+	defer DB.Close()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/v0/prices", PricesHandler)
