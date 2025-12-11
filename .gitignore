@@ -1,2 +1,5 @@
 # Env file
 .env
+
+# SQL file
+prices_table.sql
