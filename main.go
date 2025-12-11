@@ -33,10 +33,9 @@ type PriceItem struct {
 
 func InsertItem(item PriceItem) error {
 	_, err := DB.Exec(`
-			INSERT INTO items (id, name, category, price, create_date)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO items (name, category, price, create_date)
+			VALUES ($1, $2, $3, $4)
 		`,
-		item.ID,
 		item.Name,
 		item.Category,
 		item.Price,
@@ -174,7 +173,6 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 			}
 
 			item := PriceItem{
-				ID:       id,
 				Name:     name,
 				Category: category,
 				Price:    price,
@@ -182,14 +180,9 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 			}
 
 			_, err = DB.Exec(`
-    			INSERT INTO items (id, name, category, price, create_date)
-    			VALUES ($1, $2, $3, $4, $5)
-    			ON CONFLICT (id) DO UPDATE SET 
-        			name = EXCLUDED.name,
-        			category = EXCLUDED.category,
-        			price = EXCLUDED.price,
-        			create_date = EXCLUDED.create_date
-			`, item.ID, item.Name, item.Category, item.Price, item.Date)
+    			INSERT INTO items (name, category, price, create_date)
+    			VALUES ($1, $2, $3, $4)
+			`, item.Name, item.Category, item.Price, item.Date)
 			if err != nil {
 				fmt.Printf("Failed to INSERT in BD in row %d and err: %v\n", i, err)
 			}
@@ -294,7 +287,7 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 	fileWriter, _ := zipWriter.Create("data.csv")
 	csvWriter := csv.NewWriter(fileWriter)
 
-	csvWriter.Write([]string{" id", "name", "category", "price", "create_date"})
+	csvWriter.Write([]string{"id", "name", "category", "price", "create_date"})
 
 	for _, item := range items {
 		csvWriter.Write([]string{
