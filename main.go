@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,7 +34,7 @@ type PriceItem struct {
 
 func InsertItem(item PriceItem) error {
 	_, err := DB.Exec(`
-			INSERT INTO items (name, category, price, create_date)
+			INSERT INTO prices (name, category, price, create_date)
 			VALUES ($1, $2, $3, $4)
 		`,
 		item.Name,
@@ -47,7 +48,7 @@ func InsertItem(item PriceItem) error {
 func GetItems() ([]PriceItem, error) {
 	rows, err := DB.Query(`
 			SELECT id, name, category, price, create_date
-			FROM items
+			FROM prices
 			ORDER BY id
 		`)
 	if err != nil {
@@ -111,13 +112,11 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 	}
 
 	var (
-		totalItems      int
 		totalCount      int
 		duplicatesCount int
 		totalPrice      float64
 	)
 
-	categoriesMap := make(map[string]struct{})
 	seenID := make(map[int]struct{})
 
 	var validItems []PriceItem
@@ -168,35 +167,25 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 
 			price, err := strconv.ParseFloat(strings.TrimSpace(row[3]), 64)
 			if err != nil {
-				fmt.Printf("Skip row %d: invalid price %q: %v\n", i, row[3], err)
+				log.Printf("Skip row %d: invalid price %q: %v\n", i, row[3], err)
 				continue
 			}
 
 			Date, err := time.Parse("2006-01-02", strings.TrimSpace(row[4]))
 			if err != nil {
-				fmt.Printf("Skip row %d: invalid date %q: %v\n", i, row[4], err)
+				log.Printf("Skip row %d: invalid date %q: %v\n", i, row[4], err)
 				continue
 			}
 
 			item := PriceItem{
+				ID:       id,
 				Name:     name,
 				Category: category,
 				Price:    price,
 				Date:     Date,
 			}
 
-			validItems = append(validItems, PriceItem{
-				ID:       id,
-				Name:     item.Name,
-				Category: item.Category,
-				Price:    item.Price,
-				Date:     item.Date,
-			})
-
-			totalItems++
-			categoriesMap[category] = struct{}{}
-			totalPrice += price
-
+			validItems = append(validItems, item)
 		}
 	}
 
@@ -216,25 +205,22 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 		var exits bool
 		err = tx.QueryRow(`
         SELECT EXISTS (
-            SELECT 1 FROM items 
-            WHERE id = $1 
-              AND name = $2 
-              AND category = $3 
-              AND price = $4 
-              AND create_date = $5
+            SELECT 1 FROM prices
+            WHERE name = $1 AND category = $2 AND price = $3 AND create_date = $4
         )
-    `, item.ID, item.Name, item.Category, item.Price, item.Date).Scan(&exits)
+    `, item.Name, item.Category, item.Price, item.Date).Scan(&exits)
 		if err != nil {
 			http.Error(res, "Select error", http.StatusMethodNotAllowed)
 			return
 		}
 
 		if exits {
+			duplicatesCount++
 			continue
 		}
 
 		_, err = tx.Exec(`
-        INSERT INTO items (id, name, category, price, create_date)
+        INSERT INTO prices (id, name, category, price, create_date)
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
@@ -249,21 +235,20 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 	}
 
 	var totalDBItems int
-	err = tx.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&totalDBItems)
+	err = tx.QueryRow(`SELECT COUNT(*) FROM prices`).Scan(&totalDBItems)
 	if err != nil {
 		http.Error(res, "Failed to count items", http.StatusInternalServerError)
 		return
 	}
 
 	var totalCategories int
-	err = tx.QueryRow(`SELECT COUNT(DISTINCT category) FROM items`).Scan(&totalCategories)
+	err = tx.QueryRow(`SELECT COUNT(DISTINCT category) FROM prices`).Scan(&totalCategories)
 	if err != nil {
 		http.Error(res, "Failed to count categories", http.StatusInternalServerError)
 		return
 	}
 
-	var totalDBPrice float64
-	err = tx.QueryRow(`SELECT COALESCE(SUM(price), 0) FROM items`).Scan(&totalDBPrice)
+	err = tx.QueryRow(`SELECT COALESCE(SUM(price), 0) FROM prices`).Scan(&totalPrice)
 	if err != nil {
 		http.Error(res, "Failed to sum price", http.StatusInternalServerError)
 		return
@@ -278,8 +263,8 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 	stats := ImportStats{
 		TotalCount:      totalCount,
 		DuplicatesCount: duplicatesCount,
-		TotalItems:      totalItems,
-		TotalCategories: len(categoriesMap),
+		TotalItems:      len(validItems),
+		TotalCategories: totalCategories,
 		TotalPrice:      totalPrice,
 	}
 
@@ -338,7 +323,7 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 		argID++
 	}
 
-	query := "SELECT id, name, category, price, create_date FROM items"
+	query := "SELECT id, name, category, price, create_date FROM prices"
 	if len(filters) > 0 {
 		query += " WHERE " + strings.Join(filters, " AND ")
 	}
