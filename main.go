@@ -120,6 +120,8 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 	categoriesMap := make(map[string]struct{})
 	seenID := make(map[int]struct{})
 
+	var validItems []PriceItem
+
 	for _, f := range zipReader.File {
 		if !strings.HasSuffix(f.Name, ".csv") {
 			continue
@@ -170,7 +172,7 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 				continue
 			}
 
-			createDate, err := time.Parse("2006-01-02", strings.TrimSpace(row[4]))
+			Date, err := time.Parse("2006-01-02", strings.TrimSpace(row[4]))
 			if err != nil {
 				fmt.Printf("Skip row %d: invalid date %q: %v\n", i, row[4], err)
 				continue
@@ -180,16 +182,16 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 				Name:     name,
 				Category: category,
 				Price:    price,
-				Date:     createDate,
+				Date:     Date,
 			}
 
-			_, err = DB.Exec(`
-    			INSERT INTO items (name, category, price, create_date)
-    			VALUES ($1, $2, $3, $4)
-			`, item.Name, item.Category, item.Price, item.Date)
-			if err != nil {
-				fmt.Printf("Failed to INSERT in BD in row %d and err: %v\n", i, err)
-			}
+			validItems = append(validItems, PriceItem{
+				ID:       id,
+				Name:     item.Name,
+				Category: item.Category,
+				Price:    item.Price,
+				Date:     item.Date,
+			})
 
 			totalItems++
 			categoriesMap[category] = struct{}{}
@@ -197,6 +199,82 @@ func handlePostPrices(res http.ResponseWriter, req *http.Request) {
 
 		}
 	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		http.Error(res, "Trans fail", http.StatusMethodNotAllowed)
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	for _, item := range validItems {
+		var exits bool
+		err = tx.QueryRow(`
+        SELECT EXISTS (
+            SELECT 1 FROM items 
+            WHERE id = $1 
+              AND name = $2 
+              AND category = $3 
+              AND price = $4 
+              AND create_date = $5
+        )
+    `, item.ID, item.Name, item.Category, item.Price, item.Date).Scan(&exits)
+		if err != nil {
+			http.Error(res, "Select error", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if exits {
+			continue
+		}
+
+		_, err = tx.Exec(`
+        INSERT INTO items (id, name, category, price, create_date)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            category = EXCLUDED.category,
+            price = EXCLUDED.price,
+            create_date = EXCLUDED.create_date
+    `, item.ID, item.Name, item.Category, item.Price, item.Date)
+		if err != nil {
+			http.Error(res, "Insert error", http.StatusMethodNotAllowed)
+			return
+		}
+	}
+
+	var totalDBItems int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&totalDBItems)
+	if err != nil {
+		http.Error(res, "Failed to count items", http.StatusInternalServerError)
+		return
+	}
+
+	var totalCategories int
+	err = tx.QueryRow(`SELECT COUNT(DISTINCT category) FROM items`).Scan(&totalCategories)
+	if err != nil {
+		http.Error(res, "Failed to count categories", http.StatusInternalServerError)
+		return
+	}
+
+	var totalDBPrice float64
+	err = tx.QueryRow(`SELECT COALESCE(SUM(price), 0) FROM items`).Scan(&totalDBPrice)
+	if err != nil {
+		http.Error(res, "Failed to sum price", http.StatusInternalServerError)
+		return
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		http.Error(res, "Transaction commit failed", http.StatusInternalServerError)
+		return
+	}
+
 	stats := ImportStats{
 		TotalCount:      totalCount,
 		DuplicatesCount: duplicatesCount,
