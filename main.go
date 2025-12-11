@@ -67,6 +67,10 @@ func GetItems() ([]PriceItem, error) {
 		items = append(items, price)
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return items, nil
 }
 
@@ -279,7 +283,12 @@ func handleGetPrices(res http.ResponseWriter, req *http.Request) {
 		if item.Price <= 0 || item.Name == "" || item.Category == "" || item.Date.IsZero() {
 			continue
 		}
+
 		items = append(items, item)
+	}
+
+	if err = rows.Err(); err != nil {
+		http.Error(res, "Row error", http.StatusMethodNotAllowed)
 	}
 
 	var buf bytes.Buffer
